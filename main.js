@@ -11,12 +11,19 @@ const resultTransFile       = "materials/result-translated.txt";
 
 // dictionary file, containing japanese to english value in csv 
 const dictionary            = "materials/dict.csv";
+
+// will the generator also create a copy of the unmodified texts?
+const cloneUnmodifiedSentence = false;
 const config = [
     {
-        markers: ["\ue101", "\ue102", "\ue103"],
-        afterSentence : true,
-        beforeSentence : true,
-        placement : "after"
+        markers         : ["\ue101", "\ue102", "\ue103"],
+        afterSentence   : true,
+        beforeSentence  : true,
+        midSentence     : true,
+        placement       : "after",
+        afterSentenceChance     : 100, // % chance integer
+        beforeSentenceChance    : 100, // % chance integer
+        midSentenceChance       : 50  // % chance integer
     }
 ]
 
@@ -36,6 +43,10 @@ const readCsv = async function(file) {
             resolve(csvData);
         }); 
     })
+}
+
+function chance(percent=100) {
+    return ((Math.random()*100) <= percent)
 }
 
 function getCombinations(valuesArray = []) {
@@ -64,6 +75,28 @@ function getCombinations(valuesArray = []) {
     //console.log(combi.join("\n"));
     return combi;
 }
+
+function getAllCombination(item, n) {
+    const filter = typeof n !=='undefined';
+    n = n ? n : item.length;
+    const result = [];
+    const isArray = item.constructor.name === 'Array';
+    const count = isArray ? item.length : item;
+  
+    const pow = (x, n, m = []) => {
+      if (n > 0) {
+        for (var i = 0; i < count; i++) {
+          const value = pow(x, n - 1, [...m, isArray ? item[i] : i]);
+          result.push(value);
+        }
+      }
+      return m;
+    }
+    pow(isArray ? item.length : item, n);
+  
+    return filter ? result.filter(item => item.length == n) : result;
+}
+
 
 const countOccurance = function(haystack, needle) {
     return haystack.split(needle).length -1
@@ -123,13 +156,18 @@ void async function() {
     if (origTextContents.length !== transTextContents.length) return console.error("Number of line between original text and translated texts are not same!", origTextContents.length, transTextContents.length);
 
     // write original text
-    var resultOrig = clone(origTextContents);
-    var resultTrans = clone(transTextContents);
+    var resultOrig = []
+    var resultTrans = []
+    if (cloneUnmodifiedSentence) {
+        resultOrig = clone(origTextContents);
+        resultTrans = clone(transTextContents);
+    }
 
 
     const assignBeforeSentence = async function(config) {
         if (!config.beforeSentence) return;
         for (var i in origTextContents) {
+            if (!chance(config.beforeSentenceChance)) continue;
             for (var m in config.markers) {
                 resultOrig.push(config.markers[m]+origTextContents[i]);
                 resultTrans.push(config.markers[m]+transTextContents[i]);
@@ -140,6 +178,7 @@ void async function() {
     const assignAfterSentence = async function(config) {
         if (!config.afterSentence) return;
         for (var i in origTextContents) {
+            if (!chance(config.afterSentenceChance)) continue;
             for (var m in config.markers) {
                 resultOrig.push(origTextContents[i]+config.markers[m]);
                 resultTrans.push(transTextContents[i]+config.markers[m]);
@@ -148,12 +187,14 @@ void async function() {
     }
 
     const assignTranslation = async function(config) {
+        if (!config.midSentence) return;
+
         for (var i in origTextContents) {
             //lookup original text
             for (var x in dict) {
                 if (!(origTextContents[i].includes(dict[x].original) && isMatchInsensitive(transTextContents[i], dict[x].translation.toLowerCase()))) continue;
                 if (countOccurance(origTextContents[i], dict[x].original) != countOccuranceEn(transTextContents[i], dict[x].translation)) continue;
-
+                if (!chance(config.midSentenceChance)) continue;
 
                 for (var m in config.markers) {
                     var replacedOrig = origTextContents[i].replaceAll(dict[x].original, dict[x].original+config.markers[m]);
@@ -166,7 +207,7 @@ void async function() {
     }
 
     const assignTokens = async function(config) {
-        var combinations = getCombinations(config.markers);
+        var combinations = getAllCombination(config.markers);
         for (var c in combinations) {
             resultOrig.push(combinations[c].join(""));
             resultTrans.push(combinations[c].join(""));
